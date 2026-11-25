@@ -1,23 +1,52 @@
 import type { ReactNode } from 'react'
 import type { Product, StockStatus } from './data/products'
+import type { ComponentType } from 'react'
+import {
+  Search, X, Menu, LayoutGrid, MousePointerClick, Handshake, Truck,
+  ShieldCheck, Wallet, MapPin, Phone, Clock, Hand, BadgeCheck,
+  HeartHandshake, Receipt, RefreshCw, Sparkles,
+} from 'lucide-react'
+import { FaWhatsapp } from 'react-icons/fa'
 
-export const icons: Record<string, string> = {
-  search: '⌕', menu: '☰', close: '×', bag: '▱', wallet: '▭', belt: '〰', gift: '◇',
-  browse: '⌕', select: '☝', chat: '◉', confirm: '✓', pay: 'R', delivery: '▰',
-  handmade: '✦', quality: '◆', service: '♡', location: '⌖', phone: '☎', clock: '◷',
+type IconComp = ComponentType<{ size?: number; strokeWidth?: number }>
+const WhatsApp: IconComp = ({ size }) => <FaWhatsapp size={size} />
+
+const icons: Record<string, IconComp> = {
+  search: Search,
+  close: X,
+  menu: Menu,
+  browse: LayoutGrid,
+  select: MousePointerClick,
+  chat: WhatsApp,
+  handshake: Handshake,
+  delivery: Truck,
+  confirm: ShieldCheck,
+  pay: Wallet,
+  location: MapPin,
+  phone: Phone,
+  clock: Clock,
+  handmade: Hand,
+  quality: BadgeCheck,
+  service: HeartHandshake,
+  cost: Receipt,
+  returns: RefreshCw,
 }
 
 export function Logo({ light = false }: { light?: boolean }) {
   return (
-    <div className={`logo ${light ? 'logo-light' : ''}`} aria-label="Charming Leather">
-      <span className="logo-mark">CL</span>
-      <span><b>Charming</b><small>LEATHER</small></span>
-    </div>
+    <span className={light ? 'logo logo-light' : 'logo'}>
+      <img src="/images/charmlogo.png" alt="Charming Leather" className="logo-img" />
+    </span>
   )
 }
 
 export function Icon({ name }: { name: string }) {
-  return <span className="icon" aria-hidden="true">{icons[name] || name}</span>
+  const Cmp = icons[name] ?? Sparkles
+  return (
+    <span className="icon" aria-hidden="true">
+      <Cmp size={26} strokeWidth={2.2} />
+    </span>
+  )
 }
 
 export function StockBadge({ status }: { status: StockStatus }) {

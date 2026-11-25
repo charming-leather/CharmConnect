@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { ADMIN_CREDENTIALS, DEFAULT_SETTINGS, type Settings } from './config'
+import { FaWhatsapp, FaFacebookF } from 'react-icons/fa'
+import { ADMIN_CREDENTIALS, DEFAULT_SETTINGS, MAP_EMBEDS, type Settings } from './config'
 import { Accordion, Icon, Logo, PageHero, ProductCard, StockBadge } from './components'
 import { addProduct, deleteProduct, duplicateProduct, getProduct, getProducts, seedProducts, updateProduct, type Product, type StockStatus } from './data/products'
+import {  Heart, Plane } from 'lucide-react'
+import { GiLeatherVest } from 'react-icons/gi'
+import { FaCow } from 'react-icons/fa6'
 
 type Route = { page: string; id?: string }
-const categories = ['All Products', 'Bags', 'Wallets', 'Belts', 'Accessories']
+const categories = ['All Products', 'Bags', 'Wallets', 'Jackets', 'Accessories']
 const statuses: StockStatus[] = ['In Stock', 'Low Stock', 'Out of Stock', 'Sold Out']
+const FACEBOOK_URL = 'https://web.facebook.com/profile.php?id=100063738814481'
 
 function parseRoute(): Route {
   const path = window.location.pathname.replace(/^\/|\/$/g, '') || 'home'
@@ -40,11 +45,16 @@ function useProducts(includeDrafts = false) {
 
 function useSettings() {
   const [settings, setSettingsState] = useState<Settings>(() => {
-    const stored = localStorage.getItem('charming-leather-settings')
-    return stored ? JSON.parse(stored) : DEFAULT_SETTINGS
+    try {
+      // "-v2" ignores any old saved copy from earlier tests
+      const stored = localStorage.getItem('charming-leather-settings-v2')
+      return stored ? { ...DEFAULT_SETTINGS, ...JSON.parse(stored) } : DEFAULT_SETTINGS
+    } catch {
+      return DEFAULT_SETTINGS
+    }
   })
   const setSettings = (next: Settings) => {
-    localStorage.setItem('charming-leather-settings', JSON.stringify(next))
+    localStorage.setItem('charming-leather-settings-v2', JSON.stringify(next))
     setSettingsState(next)
   }
   return [settings, setSettings] as const
@@ -75,16 +85,43 @@ function Header({ go }: { go: (path: string) => void }) {
 }
 
 function Footer({ go, settings }: { go: (path: string) => void; settings: Settings }) {
-  return <footer><div className="container footer-grid">
-    <div><Logo light /><p>Handmade leather goods and friendly, personal service from Parys and Vaalpark.</p></div>
-    <div><h3>Quick links</h3><button onClick={() => go('/shop')}>Shop products</button><button onClick={() => go('/how-to-buy')}>How to buy</button><button onClick={() => go('/payments-delivery')}>Payments & delivery</button></div>
-    <div><h3>Our branches</h3><p><b>Parys</b><br />{settings.parys.address}<br />{settings.parys.phone}</p><p><b>Vaalpark</b><br />{settings.vaalpark.address}<br />{settings.vaalpark.phone}</p></div>
-    <div><h3>Let’s chat</h3><a className="footer-whatsapp" href={`https://wa.me/${settings.whatsapp}`} target="_blank">WhatsApp us</a><p className="socials"><span>f</span><span>◎</span></p></div>
-  </div><div className="container footer-bottom"><span>© {new Date().getFullYear()} Charming Leather</span><button onClick={() => go('/staff-login')}>Staff Portal</button></div></footer>
+  // Turns 073 485 2010 into a tap-to-call link
+  const tel = (phone: string) => `tel:+27${phone.replace(/\D/g, '').replace(/^0/, '')}`
+  return <footer>
+    <div className="container footer-grid">
+      <div>
+        <Logo />
+        <p>Handmade, 100% pure leather goods and friendly, personal service from Parys and Vaalpark.</p>
+      </div>
+      <div>
+        <h3>Quick links</h3>
+        <button onClick={() => go('/')}>Home</button>
+        <button onClick={() => go('/shop')}>Shop products</button>
+        <button onClick={() => go('/how-to-buy')}>How to buy</button>
+        <button onClick={() => go('/payments-delivery')}>Payments & delivery</button>
+        <button onClick={() => go('/about')}>About us</button>
+        <button onClick={() => go('/contact')}>Contact</button>
+      </div>
+      <div>
+        <h3>Our branches</h3>
+        <p><b>Parys</b><br />{settings.parys.address}<br /><a href={tel(settings.parys.phone)}>{settings.parys.phone}</a>{settings.parys.phone2 && <><br /><small>Or try: </small><a href={tel(settings.parys.phone2)}>{settings.parys.phone2}</a></>}</p>
+        <p><b>Vaalpark</b><br />{settings.vaalpark.address}<br /><a href={tel(settings.vaalpark.phone)}>{settings.vaalpark.phone}</a>{settings.vaalpark.phone2 && <><br /><small>Or try: </small><a href={tel(settings.vaalpark.phone2)}>{settings.vaalpark.phone2}</a></>}</p>
+      </div>
+      <div>
+        <h3>Follow us</h3>
+        <p>See our latest work and news on Facebook.</p>
+        <p className="socials"><a href={FACEBOOK_URL} target="_blank" rel="noopener noreferrer" aria-label="Charming Leather on Facebook"><FaFacebookF size={18} /></a></p>
+      </div>
+    </div>
+    <div className="container footer-bottom">
+      <span>© {new Date().getFullYear()} Charming Leather. All rights reserved.</span>
+      <button onClick={() => go('/staff-login')}>Staff Portal</button>
+    </div>
+  </footer>
 }
 
 function Layout({ children, go, settings }: { children: React.ReactNode; go: (path: string) => void; settings: Settings }) {
-  return <><Header go={go} /><main>{children}</main><a className="floating-wa" href={`https://wa.me/${settings.whatsapp}`} target="_blank" aria-label="Chat with Charming Leather on WhatsApp"><span>◉</span><b>WhatsApp</b></a><Footer go={go} settings={settings} /></>
+  return <><Header go={go} /><main>{children}</main><a className="floating-wa" href={`https://wa.me/${settings.whatsapp}`} target="_blank" rel="noopener noreferrer" aria-label="Chat with Charming Leather on WhatsApp"><FaWhatsapp size={28} /><b>WhatsApp</b></a><Footer go={go} settings={settings} /></>
 }
 
 function Home({ go }: { go: (path: string) => void }) {
@@ -96,13 +133,13 @@ function Home({ go }: { go: (path: string) => void }) {
     ['delivery', '4. Pay and Receive', 'Payment and delivery are arranged privately with the owner'],
   ]
   return <>
-    <section className="hero"><div className="container hero-grid"><div className="hero-copy"><p className="eyebrow">HANDMADE IN SOUTH AFRICA</p><h1>Leather goods with <em>lasting charm.</em></h1><p>Beautiful, practical leather pieces, made with care. Browse online, then order simply through WhatsApp.</p><button className="btn btn-large" onClick={() => go('/shop')}>Shop Now <span>→</span></button><p className="hero-note"><span>✓</span> No online payment needed</p></div><div className="hero-image"><img src={seedProducts[0].images[0]} alt="Handcrafted leather satchel" /><div className="hero-badge"><b>Made<br />with care</b><span>✦</span></div></div></div></section>
+    <section className="hero"><div className="container hero-grid"><div className="hero-copy"><p className="eyebrow">HANDMADE IN SOUTH AFRICA</p><h1>Leather goods with <em>lasting charm.</em></h1><p>Beautiful, practical leather pieces, made with care. Browse online, then order simply through WhatsApp.</p><button className="btn btn-large" onClick={() => go('/shop')}>Shop Now <span>→</span></button><p className="hero-note"><span>✓</span> Shopping made simple </p></div><div className="hero-image"><img src="/images/homepageimg.png" alt="Charming Leather handmade leather goods" /><div className="hero-badge"><b>Genuine<br />Leather</b><span><FaCow size={20} fill="currentColor" /></span></div></div></div></section>
     <section className="section container"><div className="section-heading"><div><p className="eyebrow">SHOP BY CATEGORY</p><h2>Find what you’re looking for</h2></div><button className="text-link desktop-link" onClick={() => go('/shop')}>View all products →</button></div><div className="category-grid">{[
-      ['Bags', seedProducts[1].images[0]], ['Wallets', seedProducts[2].images[0]], ['Belts', seedProducts[3].images[0]], ['Accessories', seedProducts[6].images[0]],
+      ['Bags', '/images/bagcato.jpg'], ['Wallets', '/images/walletcato.jpg'], ['Jackets', '/images/jacketcato.jpg'], ['Accessories', '/images/acccato.jpg'],
     ].map(([name, image]) => <button className="category-card" key={name} onClick={() => go(`/shop?category=${name}`)}><img src={image} alt="" /><span>{name}<b>→</b></span></button>)}</div></section>
     <section className="section tinted"><div className="container"><div className="section-heading"><div><p className="eyebrow">OUR FAVOURITES</p><h2>Featured products</h2></div><button className="text-link" onClick={() => go('/shop')}>See all →</button></div><div className="product-grid">{products.filter((p) => p.featured).map((p) => <ProductCard product={p} onOpen={(id) => go(`/product/${id}`)} key={p.id} />)}</div></div></section>
     <section className="section container"><div className="center-heading"><p className="eyebrow">SIMPLE & PERSONAL</p><h2>How to buy</h2><p>Ordering is easy. We help you personally from start to finish.</p></div><div className="steps">{steps.map(([icon, title, text], i) => <div className="step" key={title}><div className="step-icon"><Icon name={icon} /></div><h3>{title}</h3><p>{text}</p>{i < steps.length - 1 && <span className="step-arrow">→</span>}</div>)}</div><div className="center"><button className="text-link" onClick={() => go('/payments-delivery')}>Read more about payments and delivery →</button></div></section>
-    <section className="section why"><div className="container why-grid"><div><p className="eyebrow">WHY CHARMING LEATHER?</p><h2>Made to be used.<br />Made to be loved.</h2></div>{[['handmade','Handmade with care','Thoughtfully crafted by skilled hands.'],['quality','Quality leather','Beautiful materials chosen to last.'],['service','Friendly service','Real people, ready to help you.']].map(([icon,title,text]) => <div className="why-item" key={title}><Icon name={icon} /><div><h3>{title}</h3><p>{text}</p></div></div>)}</div></section>
+    <section className="section why"><div className="container why-grid"><div><p className="eyebrow">WHY CHARMING LEATHER?</p><h2>Made to be used.<br />Made to be loved.</h2></div>{[['handmade','Handmade with care','Thoughtfully crafted by skilled hands.'],['quality','100% pure leather','Every product we make is genuine leather, chosen to last.'],['service','Friendly service','Real people, ready to help you.']].map(([icon,title,text]) => <div className="why-item" key={title}><Icon name={icon} /><div><h3>{title}</h3><p>{text}</p></div></div>)}</div></section>
     <section className="section container"><div className="center-heading"><p className="eyebrow">COME SAY HELLO</p><h2>Visit our branches</h2></div><div className="branch-cards"><button onClick={() => go('/contact')}><span className="branch-icon"><Icon name="location" /></span><div><p>FREE STATE</p><h3>Parys</h3><span>View branch details →</span></div></button><button onClick={() => go('/contact')}><span className="branch-icon"><Icon name="location" /></span><div><p>VAAL TRIANGLE</p><h3>Vaalpark</h3><span>View branch details →</span></div></button></div></section>
   </>
 }
@@ -130,7 +167,7 @@ function ProductPage({ id, go, settings }: { id?: string; go: (path: string) => 
     ? `Hi Charming Leather, I'd like to ask about: ${product.name}, Link: ${window.location.href}`
     : `Hi Charming Leather, I'd like to order: ${product.name}, Price: R${product.price}, Colour: ${colour || '[Colour]'}, Size: ${size || '[Size]'}, Link: ${window.location.href}`
   const canBuy = unavailable || (colour && size)
-  return <section className="section container product-page"><button className="back-link" onClick={() => go('/shop')}>← Back to shop</button><div className="product-detail"><div className="gallery"><div className="main-image"><img src={product.images[image]} alt={product.name} /></div><div className="thumbnails">{product.images.map((img,i) => <button className={i === image ? 'active' : ''} onClick={() => setImage(i)} key={img}><img src={img} alt={`${product.name} view ${i+1}`} /></button>)}</div></div><div className="product-info"><p className="eyebrow">{product.category}</p><h1>{product.name}</h1><p className="detail-price">R{product.price.toLocaleString('en-ZA')}</p><StockBadge status={product.stock} /><p className="description">{product.description}</p><fieldset><legend>Choose a colour</legend><div className="option-buttons">{product.colours.map((c) => <button className={colour === c ? 'active' : ''} onClick={() => setColour(c)} key={c}>{c}</button>)}</div></fieldset><fieldset><legend>Choose a size</legend><div className="option-buttons">{product.sizes.map((s) => <button className={size === s ? 'active' : ''} onClick={() => setSize(s)} key={s}>{s}</button>)}</div></fieldset>{!canBuy && <p className="helper">Please choose a colour and size first</p>}<a className={`btn btn-wa btn-large ${!canBuy ? 'disabled' : ''}`} aria-disabled={!canBuy} href={canBuy ? `https://wa.me/${settings.whatsapp}?text=${encodeURIComponent(message)}` : undefined} target="_blank">{unavailable ? 'Ask us on WhatsApp' : 'Buy on WhatsApp'} <span>→</span></a><p className="reassurance">✓ No online payment. We confirm everything with you on WhatsApp first.</p><div className="message-preview"><b>Your WhatsApp message</b><p>{message}</p></div><Accordion items={[{ title: 'Details', content: 'Handmade from genuine leather. Natural markings make every piece unique.' },{ title: 'Care Instructions', content: 'Wipe gently with a soft, dry cloth. Keep away from excess water and direct heat.' },{ title: 'Payments & Delivery', content: <button className="text-link" onClick={() => go('/payments-delivery')}>Read full payments and delivery information →</button> }]} /></div></div><div className="related"><div className="section-heading"><h2>You may also like</h2></div><div className="product-grid">{products.filter((p) => p.category === product.category && p.id !== product.id).slice(0,4).map((p) => <ProductCard key={p.id} product={p} onOpen={(next) => go(`/product/${next}`)} />)}</div></div></section>
+  return <section className="section container product-page"><button className="back-link" onClick={() => go('/shop')}>← Back to shop</button><div className="product-detail"><div className="gallery"><div className="main-image"><img src={product.images[image]} alt={product.name} /></div><div className="thumbnails">{product.images.map((img,i) => <button className={i === image ? 'active' : ''} onClick={() => setImage(i)} key={img}><img src={img} alt={`${product.name} view ${i+1}`} /></button>)}</div></div><div className="product-info"><p className="eyebrow">{product.category}</p><h1>{product.name}</h1><p className="detail-price">R{product.price.toLocaleString('en-ZA')}</p><StockBadge status={product.stock} /><p className="description">{product.description}</p><fieldset><legend>Choose a colour</legend><div className="option-buttons">{product.colours.map((c) => <button className={colour === c ? 'active' : ''} onClick={() => setColour(c)} key={c}>{c}</button>)}</div></fieldset><fieldset><legend>Choose a size</legend><div className="option-buttons">{product.sizes.map((s) => <button className={size === s ? 'active' : ''} onClick={() => setSize(s)} key={s}>{s}</button>)}</div></fieldset>{!canBuy && <p className="helper">Please choose a colour and size first</p>}<a className={`btn btn-wa btn-large ${!canBuy ? 'disabled' : ''}`} aria-disabled={!canBuy} href={canBuy ? `https://wa.me/${settings.whatsapp}?text=${encodeURIComponent(message)}` : undefined} target="_blank"><FaWhatsapp size={22} /> {unavailable ? 'Ask us on WhatsApp' : 'Buy on WhatsApp'}</a><p className="reassurance">✓ No online payment. We confirm everything with you on WhatsApp first.</p><div className="message-preview"><b>Your WhatsApp message</b><p>{message}</p></div><Accordion items={[{ title: 'Details', content: 'Handmade from 100% pure leather. Natural markings make every piece unique.' },{ title: 'Care Instructions', content: 'Wipe gently with a soft, dry cloth. Keep away from excess water and direct heat.' },{ title: 'Payments & Delivery', content: <button className="text-link" onClick={() => go('/payments-delivery')}>Read full payments and delivery information →</button> }]} /></div></div><div className="related"><div className="section-heading"><h2>You may also like</h2></div><div className="product-grid">{products.filter((p) => p.category === product.category && p.id !== product.id).slice(0,4).map((p) => <ProductCard key={p.id} product={p} onOpen={(next) => go(`/product/${next}`)} />)}</div></div></section>
 }
 
 const fullSteps = [
@@ -152,11 +189,108 @@ function Payments({ settings }: { settings: Settings }) {
 }
 
 function Contact({ settings }: { settings: Settings }) {
-  return <><PageHero eyebrow="VISIT OR CALL" title="Our branches" text="Come say hello in Parys or Vaalpark, or send us a WhatsApp message." /><section className="section container contact-grid">{([['Parys',settings.parys],['Vaalpark',settings.vaalpark]] as const).map(([name,branch]) => <article className="branch-detail" key={name}><div className="branch-copy"><p className="eyebrow">CHARMING LEATHER</p><h2>{name}</h2><p><Icon name="location" /><span><b>Address</b><br />{branch.address}</span></p><p><Icon name="phone" /><span><b>Phone</b><br />{branch.phone}</span></p><p><Icon name="clock" /><span><b>Opening hours</b><br />{branch.hours}</span></p><a className="btn btn-wa" target="_blank" href={`https://wa.me/${settings.whatsapp}`}>WhatsApp this branch</a></div><div className="map-placeholder"><Icon name="location" /><b>Google Map</b><span>Map embed can be added here</span></div></article>)}</section></>
+  return <><PageHero eyebrow="VISIT OR CALL" title="Our branches" text="Come say hello in Parys or Vaalpark, or send us a WhatsApp message." /><section className="section container contact-grid">{([['Parys',settings.parys],['Vaalpark',settings.vaalpark]] as const).map(([name,branch]) => <article className="branch-detail" key={name}><div className="branch-copy"><p className="eyebrow">CHARMING LEATHER</p><h2>{name}</h2><p><Icon name="location" /><span><b>Address</b><br />{branch.address}</span></p><p><Icon name="phone" /><span><b>Phone</b><br />{branch.phone}{branch.phone2 && <><br />Or try: {branch.phone2}</>}</span></p><p><Icon name="clock" /><span><b>Opening hours</b>{branch.hours.split('|').map((line) => <span className="hours-line" key={line}>{line}</span>)}</span></p><a className="btn-branch" target="_blank" rel="noopener noreferrer" href={`https://wa.me/${settings.whatsapp}?text=${encodeURIComponent(`Hello Charming Leather ${name}, I would like to know: `)}`}><FaWhatsapp size={18} /> WhatsApp this branch</a></div><div className="map-wrap">
+  {MAP_EMBEDS[name.toLowerCase() as 'parys' | 'vaalpark'] ? (
+    <iframe
+      title={`Map of Charming Leather ${name}`}
+      src={MAP_EMBEDS[name.toLowerCase() as 'parys' | 'vaalpark']}
+      loading="lazy"
+      allowFullScreen
+      referrerPolicy="no-referrer-when-downgrade"
+    />
+  ) : (
+    <div className="map-placeholder"><Icon name="location" /><b>Map coming soon</b></div>
+  )}
+  <a className="map-link" target="_blank" rel="noopener noreferrer" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(branch.address)}`}>Open in Google Maps →</a>
+</div></article>)}</section><section className="container fb-section"><a className="fb-block" href={FACEBOOK_URL} target="_blank" rel="noopener noreferrer"><span className="fb-icon"><FaFacebookF size={22} /></span><span className="fb-text"><b>Follow us on Facebook</b><small>See our latest work and news</small></span><span className="fb-arrow">→</span></a></section></>
+
 }
 
-function About({ go }: { go: (path: string) => void }) {
-  return <><PageHero eyebrow="OUR STORY" title="Made with care. Shared with pride." text="Charming Leather brings practical, beautiful leather goods to our communities in Parys and Vaalpark." /><section className="section container about-grid"><img src={seedProducts[1].images[0]} alt="Leather bag made by Charming Leather" /><div><p className="eyebrow">PERSONAL & LOCAL</p><h2>Leather goods for everyday life</h2><p>We believe good leather becomes more beautiful as you use it. That is why we choose quality materials and useful designs that feel special without being fussy.</p><p>Our customers matter to us. When you message Charming Leather, you speak to a real person who can help you choose and arrange your order.</p><button className="btn" onClick={() => go('/shop')}>Browse our products</button></div></section></>
+function SAFlag() {
+  return <svg viewBox="0 0 30 20" width="46" height="31" role="img" aria-label="South African flag" style={{ borderRadius: 4 }}>
+    <rect width="30" height="10" fill="#E03C31" />
+    <rect y="10" width="30" height="10" fill="#001489" />
+    <path d="M0 0 L11 10 L30 10 M0 20 L11 10" fill="none" stroke="#fff" strokeWidth="7" />
+    <path d="M0 0 L11 10 L30 10 M0 20 L11 10" fill="none" stroke="#007749" strokeWidth="4" />
+    <path d="M0 1.5 L8 10 L0 18.5 Z" fill="#FFB81C" />
+    <path d="M0 3.8 L5.2 10 L0 16.2 Z" fill="#000" />
+  </svg>
+}
+
+function About({ go, settings }: { go: (path: string) => void; settings: Settings }) {
+  const leathers = [
+    ['Cow Leather', 'Strong, durable and perfect for everyday use.'],
+    ['Ostrich Leather', 'Luxurious, soft and known for its unique texture.'],
+    ['Sheep Leather', 'Lightweight, smooth and ideal for premium-quality jackets.'],
+    ['Snake Leather', 'Exotic, stylish and a bold fashion statement.'],
+  ]
+  const finishes = [
+    ['Smooth', 'Sleek and polished for a refined look.'],
+    ['Pebbled', 'Textured and durable, offering a classic appeal.'],
+    ['Embossed', 'Designed with patterns for a sophisticated touch.'],
+    ['Suede', 'Soft and velvety, adding luxury to any product.'],
+    ['Distressed', 'Vintage-style with a rugged, worn-in look.'],
+  ]
+  const cats = [
+    ['Bags', 'Handbags, laptop bags, travel bags and more.', '/shop?category=Bags'],
+    ['Jackets', 'High-quality leather jackets for a timeless style.', '/shop?category=Jackets'],
+    ['Wallets & Accessories', 'RFID-secured wallets, belts and cardholders.', '/shop?category=Wallets'],
+  ]
+  return <>
+    <PageHero eyebrow="ABOUT CHARMING LEATHER" title="100% genuine leather, made to last." text="Quality leather goods at fair prices, from our two friendly branches in Parys and Vaalpark." />
+
+    <section className="section container about-grid">
+      <img src="/images/aboutimg.jpg" alt="Charming Leather shop image" />
+      <div>
+        <p className="eyebrow">GENUINE IMPORTED LEATHER</p>
+        <h2>100% pure leather. No compromises.</h2>
+        <p>At Charming Leather we take pride in offering 100% pure leather products. Our materials are carefully sourced from top-quality leather suppliers worldwide, ensuring durability, elegance and superior craftsmanship.</p>
+        <p>We believe in delivering exceptional quality at competitive prices, making luxury leather products accessible to everyone.</p>
+        <button className="btn" onClick={() => go('/shop')}>Browse our products</button>
+      </div>
+    </section>
+
+    <section className="section tinted"><div className="container">
+      <div className="center-heading"><p className="eyebrow">OUR MATERIALS</p><h2>Types of leather we work with</h2></div>
+      <div className="type-grid">{leathers.map(([title, text]) => <article className="type-card" key={title}><h3>{title}</h3><p>{text}</p></article>)}</div>
+    </div></section>
+
+    <section className="section container">
+      <div className="center-heading"><p className="eyebrow">STYLE & FEEL</p><h2>Textures and finishes</h2><p>Our products come in a variety of textures to suit different tastes and styles.</p></div>
+      <div className="finish-list">{finishes.map(([title, text]) => <div className="finish" key={title}><b>{title} leather</b><span>{text}</span></div>)}</div>
+    </section>
+
+    <section className="section tinted"><div className="container">
+      <div className="notice" style={{ marginBottom: 0 }}><Icon name="confirm" /><div><h2>RFID-secured bags and wallets</h2><p>Security is a priority at Charming Leather. Our wallets have RFID-blocking technology that protects you from electronic theft and unauthorised scanning of your cards and personal information. Style that meets security, for your peace of mind.</p></div></div>
+    </div></section>
+
+    <section className="section container">
+      <div className="center-heading"><p className="eyebrow">OUR COLLECTION</p><h2>What we offer</h2></div>
+      <div className="info-grid">{cats.map(([title, text, link]) => <article className="info-card" key={title} style={{ minHeight: 'auto' }}><h2>{title}</h2><p>{text}</p><button className="text-link" onClick={() => go(link)}>View {title} →</button></article>)}</div>
+    </section>
+
+    <section className="section tinted"><div className="container">
+      <div className="center-heading"><p className="eyebrow">ORIGIN</p><h2>Where our products come from</h2></div>
+      <div className="origin-grid">
+        <article className="origin-card"><div className="origin-badge"><Plane size={38} strokeWidth={2} /></div><h3>Imported leather goods</h3><p>We source premium leather products internationally, ensuring top-quality materials and expert craftsmanship.</p></article>
+        <article className="origin-card"><div className="origin-badge"><SAFlag /></div><h3>Locally manufactured</h3><p>Some of our products are manufactured in South Africa, allowing us to maintain local craftsmanship and create unique designs tailored to our market.</p></article>
+      </div>
+    </div></section>
+
+    <section className="section container">
+      <div className="info-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+        <article className="info-card" style={{ minHeight: 'auto' }}><Icon name="quality" /><h2>Commitment to quality</h2><p>Each item goes through strict quality control before it reaches you, so you receive only the best.</p></article>
+        <article className="info-card" style={{ minHeight: 'auto' }}><Icon name="handmade" /><h2>Premium craftsmanship</h2><p>Every product is made with precision and attention to detail, from hand-stitched wallets to reinforced bag handles. Durable, stylish and functional.</p></article>
+      </div>
+    </section>
+
+    <section className="section tinted"><div className="container center">
+      <h2>Have a question? Let’s chat.</h2>
+      <p style={{ margin: '10px 0 24px', color: 'var(--muted)' }}>Message us any time. We're happy to help.</p>
+      <a className="btn-branch" target="_blank" rel="noopener noreferrer" href={`https://wa.me/${settings.whatsapp}?text=${encodeURIComponent('Hello Charming Leather, I would like to know: ')}`}><FaWhatsapp size={18} /> Message us on WhatsApp</a>
+      <p style={{ marginTop: 18 }}><button className="text-link" onClick={() => go('/contact')}>Visit our Parys and Vaalpark branches →</button></p>
+    </div></section>
+  </>
 }
 
 function StaffLogin({ go }: { go: (path: string) => void }) {
@@ -240,7 +374,7 @@ export default function App() {
     case 'how-to-buy': page=<HowToBuy go={go}/>; break
     case 'payments-delivery': page=<Payments settings={settings}/>; break
     case 'contact': page=<Contact settings={settings}/>; break
-    case 'about': page=<About go={go}/>; break
+    case 'about': page=<About go={go} settings={settings}/>; break
     default: page=<Home go={go}/>
   }
   return <Layout go={go} settings={settings}>{page}</Layout>
