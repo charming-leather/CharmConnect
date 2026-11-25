@@ -4,7 +4,7 @@ export const ADMIN_CREDENTIALS = {
 }
 
 export const DEFAULT_SETTINGS = {
-  whatsapp: '27734852010',
+  whatsapp: '27765936911',
   parys: {
     address: '10 Middle Street, Parys, Free State',
     phone: '073 485 2010',
