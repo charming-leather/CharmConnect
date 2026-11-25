@@ -50,7 +50,7 @@ export function Icon({ name }: { name: string }) {
 }
 
 export function StockBadge({ status }: { status: StockStatus }) {
-  return <span className={`stock stock-${status.toLowerCase().replaceAll(' ', '-')}`}>{status}</span>
+  return <span className={`stock stock-${status.toLowerCase().replace(/ /g, '-')}`}>{status}</span>
 }
 
 export function ProductCard({ product, onOpen }: { product: Product; onOpen: (id: string) => void }) {

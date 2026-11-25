@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { FaWhatsapp, FaFacebookF } from 'react-icons/fa'
-import { ADMIN_CREDENTIALS, DEFAULT_SETTINGS, MAP_EMBEDS, type Settings } from './config'
+import { DEFAULT_SETTINGS, MAP_EMBEDS, type Settings } from './config'
 import { Accordion, Icon, Logo, PageHero, ProductCard, StockBadge } from './components'
-import { addProduct, deleteProduct, duplicateProduct, getProduct, getProducts, seedProducts, updateProduct, type Product, type StockStatus } from './data/products'
-import {  Heart, Plane } from 'lucide-react'
-import { GiLeatherVest } from 'react-icons/gi'
+import { addProduct, deleteProduct, duplicateProduct, getProduct, getProducts, updateProduct, uploadImage, type Product, type StockStatus } from './data/products'
+import { supabase } from './lib/supabase'
+import type { Session } from '@supabase/supabase-js'
+import { Plane } from 'lucide-react'
 import { FaCow } from 'react-icons/fa6'
 
 type Route = { page: string; id?: string }
@@ -34,13 +35,29 @@ function useRoute() {
 }
 
 function useProducts(includeDrafts = false) {
-  const [products, setProducts] = useState(() => getProducts(includeDrafts))
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
   useEffect(() => {
-    const refresh = () => setProducts(getProducts(includeDrafts))
-    window.addEventListener('products-updated', refresh)
-    return () => window.removeEventListener('products-updated', refresh)
+    let alive = true
+    const load = async () => {
+      const data = await getProducts(includeDrafts)
+      if (alive) { setProducts(data); setLoading(false) }
+    }
+    load()
+    window.addEventListener('products-updated', load)
+    return () => { alive = false; window.removeEventListener('products-updated', load) }
   }, [includeDrafts])
-  return products
+  return { products, loading }
+}
+
+function useSession() {
+  const [session, setSession] = useState<Session | null | undefined>(undefined)
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s))
+    return () => sub.subscription.unsubscribe()
+  }, [])
+  return session
 }
 
 function useSettings() {
@@ -125,7 +142,7 @@ function Layout({ children, go, settings }: { children: React.ReactNode; go: (pa
 }
 
 function Home({ go }: { go: (path: string) => void }) {
-  const products = useProducts()
+  const { products } = useProducts()
   const steps = [
     ['browse', '1. Browse', 'Look through our products'],
     ['select', '2. Select', 'Pick the item, colour and size you like'],
@@ -137,7 +154,8 @@ function Home({ go }: { go: (path: string) => void }) {
     <section className="section container"><div className="section-heading"><div><p className="eyebrow">SHOP BY CATEGORY</p><h2>Find what you’re looking for</h2></div><button className="text-link desktop-link" onClick={() => go('/shop')}>View all products →</button></div><div className="category-grid">{[
       ['Bags', '/images/bagcato.jpg'], ['Wallets', '/images/walletcato.jpg'], ['Jackets', '/images/jacketcato.jpg'], ['Accessories', '/images/acccato.jpg'],
     ].map(([name, image]) => <button className="category-card" key={name} onClick={() => go(`/shop?category=${name}`)}><img src={image} alt="" /><span>{name}<b>→</b></span></button>)}</div></section>
-    <section className="section tinted"><div className="container"><div className="section-heading"><div><p className="eyebrow">OUR FAVOURITES</p><h2>Featured products</h2></div><button className="text-link" onClick={() => go('/shop')}>See all →</button></div><div className="product-grid">{products.filter((p) => p.featured).map((p) => <ProductCard product={p} onOpen={(id) => go(`/product/${id}`)} key={p.id} />)}</div></div></section>
+    
+    {products.some((p) => p.featured) && <section className="section tinted"><div className="container"><div className="section-heading"><div><p className="eyebrow">OUR FAVOURITES</p><h2>Featured products</h2></div><button className="text-link" onClick={() => go('/shop')}>See all →</button></div><div className="product-grid">{products.filter((p) => p.featured).map((p) => <ProductCard product={p} onOpen={(id) => go(`/product/${id}`)} key={p.id} />)}</div></div></section>}
     <section className="section container"><div className="center-heading"><p className="eyebrow">SIMPLE & PERSONAL</p><h2>How to buy</h2><p>Ordering is easy. We help you personally from start to finish.</p></div><div className="steps">{steps.map(([icon, title, text], i) => <div className="step" key={title}><div className="step-icon"><Icon name={icon} /></div><h3>{title}</h3><p>{text}</p>{i < steps.length - 1 && <span className="step-arrow">→</span>}</div>)}</div><div className="center"><button className="text-link" onClick={() => go('/payments-delivery')}>Read more about payments and delivery →</button></div></section>
     <section className="section why"><div className="container why-grid"><div><p className="eyebrow">WHY CHARMING LEATHER?</p><h2>Made to be used.<br />Made to be loved.</h2></div>{[['handmade','Handmade with care','Thoughtfully crafted by skilled hands.'],['quality','100% pure leather','Every product we make is genuine leather, chosen to last.'],['service','Friendly service','Real people, ready to help you.']].map(([icon,title,text]) => <div className="why-item" key={title}><Icon name={icon} /><div><h3>{title}</h3><p>{text}</p></div></div>)}</div></section>
     <section className="section container"><div className="center-heading"><p className="eyebrow">COME SAY HELLO</p><h2>Visit our branches</h2></div><div className="branch-cards"><button onClick={() => go('/contact')}><span className="branch-icon"><Icon name="location" /></span><div><p>FREE STATE</p><h3>Parys</h3><span>View branch details →</span></div></button><button onClick={() => go('/contact')}><span className="branch-icon"><Icon name="location" /></span><div><p>VAAL TRIANGLE</p><h3>Vaalpark</h3><span>View branch details →</span></div></button></div></section>
@@ -145,22 +163,23 @@ function Home({ go }: { go: (path: string) => void }) {
 }
 
 function Shop({ go }: { go: (path: string) => void }) {
-  const all = useProducts()
+  const { products: all, loading } = useProducts()
   const params = new URLSearchParams(window.location.search)
   const [category, setCategory] = useState(params.get('category') || 'All Products')
   const [sort, setSort] = useState('featured')
   const [status, setStatus] = useState('All')
   const search = (params.get('search') || '').toLowerCase()
   const products = useMemo(() => all.filter((p) => (category === 'All Products' || p.category === category) && (status === 'All' || p.stock === status) && (!search || p.name.toLowerCase().includes(search))).sort((a,b) => sort === 'low' ? a.price-b.price : sort === 'high' ? b.price-a.price : Number(b.featured)-Number(a.featured)), [all, category, status, search, sort])
-  return <><PageHero eyebrow="OUR COLLECTION" title="Shop leather goods" text="Find something you love, choose your options, then order through WhatsApp." /><section className="section container shop-section"><div className="chips" aria-label="Product categories">{categories.map((c) => <button className={category === c ? 'active' : ''} onClick={() => setCategory(c)} key={c}>{c}</button>)}</div><div className="shop-tools"><p><b>{products.length}</b> products</p><div><label>Availability <select value={status} onChange={(e) => setStatus(e.target.value)}><option>All</option>{statuses.map((s) => <option key={s}>{s}</option>)}</select></label><label>Sort by <select value={sort} onChange={(e) => setSort(e.target.value)}><option value="featured">Featured</option><option value="low">Price: low to high</option><option value="high">Price: high to low</option></select></label></div></div>{products.length ? <div className="product-grid">{products.map((p) => <ProductCard product={p} onOpen={(id) => go(`/product/${id}`)} key={p.id} />)}</div> : <div className="empty"><h2>No products found</h2><p>Try another category or search.</p></div>}</section></>
+  return <><PageHero eyebrow="OUR COLLECTION" title="Shop leather goods" text="Find something you love, choose your options, then order through WhatsApp." /><section className="section container shop-section"><div className="chips" aria-label="Product categories">{categories.map((c) => <button className={category === c ? 'active' : ''} onClick={() => setCategory(c)} key={c}>{c}</button>)}</div><div className="shop-tools"><p><b>{products.length}</b> products</p><div><label>Availability <select value={status} onChange={(e) => setStatus(e.target.value)}><option>All</option>{statuses.map((s) => <option key={s}>{s}</option>)}</select></label><label>Sort by <select value={sort} onChange={(e) => setSort(e.target.value)}><option value="featured">Featured</option><option value="low">Price: low to high</option><option value="high">Price: high to low</option></select></label></div></div>{loading ? <div className="empty"><p>Loading products…</p></div> : products.length ? <div className="product-grid">{products.map((p) => <ProductCard product={p} onOpen={(id) => go(`/product/${id}`)} key={p.id} />)}</div> : <div className="empty"><h2>No products found</h2><p>Try another category or search.</p></div>}</section></>
 }
 
 function ProductPage({ id, go, settings }: { id?: string; go: (path: string) => void; settings: Settings }) {
-  const products = useProducts()
+  const { products, loading } = useProducts()
   const product = products.find((p) => p.id === id)
   const [colour, setColour] = useState('')
   const [size, setSize] = useState('')
   const [image, setImage] = useState(0)
+  if (loading) return <div className="section container empty"><p>Loading…</p></div>
   if (!product) return <div className="section container empty"><h1>Product not found</h1><button className="btn" onClick={() => go('/shop')}>Back to shop</button></div>
   const unavailable = product.stock === 'Out of Stock' || product.stock === 'Sold Out'
   const message = unavailable
@@ -295,22 +314,28 @@ function About({ go, settings }: { go: (path: string) => void; settings: Setting
 
 function StaffLogin({ go }: { go: (path: string) => void }) {
   const [error, setError] = useState('')
-  const submit = (e: FormEvent<HTMLFormElement>) => {
+  const [busy, setBusy] = useState(false)
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
-    if (form.get('username') === ADMIN_CREDENTIALS.username && form.get('password') === ADMIN_CREDENTIALS.password) {
-      sessionStorage.setItem('charming-admin', 'true'); go('/admin')
-    } else setError('Those details do not match. Please check them and try again.')
+    setBusy(true); setError('')
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email: String(form.get('email')).trim(),
+      password: String(form.get('password')),
+    })
+    setBusy(false)
+    if (authError) setError('Those details do not match. Please check them and try again.')
+    else go('/admin')
   }
-  return <div className="login-page"><button onClick={() => go('/')} className="logo-button"><Logo /></button><form className="login-card" onSubmit={submit}><p className="eyebrow">STAFF PORTAL</p><h1>Welcome back</h1><p>Log in to manage products and shop details.</p>{error && <div className="form-error">{error}</div>}<label>Username<input name="username" autoComplete="username" required /></label><label>Password<input name="password" type="password" autoComplete="current-password" required /></label><button className="btn btn-large" type="submit">Log In</button><button className="text-link" type="button" onClick={() => go('/')}>← Back to website</button></form></div>
+  return <div className="login-page"><button onClick={() => go('/')} className="logo-button"><Logo /></button><form className="login-card" onSubmit={submit}><p className="eyebrow">STAFF PORTAL</p><h1>Welcome back</h1><p>Log in to manage products.</p>{error && <div className="form-error">{error}</div>}<label>Email<input name="email" type="email" autoComplete="username" required /></label><label>Password<input name="password" type="password" autoComplete="current-password" required /></label><button className="btn btn-large" type="submit" disabled={busy}>{busy ? 'Logging in…' : 'Log In'}</button><button className="text-link" type="button" onClick={() => go('/')}>← Back to website</button></form></div>
 }
 
 function AdminShell({ children, go }: { children: React.ReactNode; go: (path: string) => void }) {
-  return <div className="admin-layout"><aside><Logo light /><nav><button onClick={() => go('/admin')}>Products</button><button onClick={() => go('/admin/settings')}>Settings</button><button onClick={() => go('/')}>View website</button></nav><button className="logout" onClick={() => { sessionStorage.removeItem('charming-admin'); go('/staff-login') }}>Log Out</button></aside><div className="admin-main">{children}</div></div>
+  return <div className="admin-layout"><aside><Logo light /><nav><button onClick={() => go('/admin')}>Products</button><button onClick={() => go('/')}>View website</button></nav><button className="logout" onClick={() => { supabase.auth.signOut(); go('/staff-login') }}>Log Out</button></aside><div className="admin-main">{children}</div></div>
 }
 
 function AdminDashboard({ go }: { go: (path: string) => void }) {
-  const products = useProducts(true)
+  const { products } = useProducts(true)
   const [query,setQuery] = useState('')
   const [filter,setFilter] = useState('All')
   const shown = products.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()) && (filter === 'All' || p.stock === filter))
@@ -320,32 +345,53 @@ function AdminDashboard({ go }: { go: (path: string) => void }) {
 const emptyProduct: Product = { id:'', name:'', price:0, category:'Bags', description:'', colours:[], sizes:[], stock:'In Stock', featured:false, published:false, images:[] }
 
 function ProductEditor({ id, go }: { id?: string; go: (path: string) => void }) {
-  const existing = id && id !== 'new' ? getProduct(id) : undefined
-  const [form,setForm] = useState<Product>(existing || emptyProduct)
+  const isNew = !id || id === 'new'
+  const [form,setForm] = useState<Product>(emptyProduct)
+  const [loaded,setLoaded] = useState(isNew)
   const [colour,setColour] = useState('')
   const [size,setSize] = useState('')
   const [error,setError] = useState('')
   const [success,setSuccess] = useState('')
+  const [uploading,setUploading] = useState(0)
+  const [saving,setSaving] = useState(false)
+  useEffect(() => {
+    if (isNew) return
+    getProduct(id!).then((p) => { if (p) setForm(p); setLoaded(true) })
+  }, [id, isNew])
   const patch = <K extends keyof Product>(key: K, value: Product[K]) => setForm((f) => ({...f,[key]:value}))
-  const upload = (files: FileList | null) => {
-    if (!files) return
-    Array.from(files).forEach((file) => { const reader = new FileReader(); reader.onload = () => setForm((f) => ({...f,images:[...f.images,String(reader.result)]})); reader.readAsDataURL(file) })
+  const upload = async (files: File[]) => {
+    setError('')
+    for (const file of files) {
+      setUploading((n) => n + 1)
+      try {
+        const url = await uploadImage(file)
+        setForm((f) => ({ ...f, images: [...f.images, url] }))
+      } catch {
+        setError('A photo could not be uploaded. Please check your internet and try again.')
+      }
+      setUploading((n) => n - 1)
+    }
   }
-  const saveForm = (published: boolean) => {
+  const saveForm = async (published: boolean) => {
+    if (uploading > 0) { setError('Please wait for the photos to finish uploading.'); return }
     if (!form.name.trim() || form.price <= 0 || !form.description.trim() || !form.images.length) { setError('Please add a photo, name, price and description before saving.'); return }
-    const record = {...form, id: existing?.id || `${form.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}-${Date.now()}`, published}
-    existing ? updateProduct(existing.id,record) : addProduct(record)
+    setSaving(true)
+    const record = {...form, id: isNew ? `${form.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}-${Date.now()}` : form.id, published}
+    const ok = isNew ? await addProduct(record) : await updateProduct(record.id, record)
+    setSaving(false)
+    if (!ok) return
     setError(''); setSuccess(published ? 'Product published! Customers can see it now.' : 'Draft saved. It is not visible in the shop yet.')
     setTimeout(() => go('/admin'), 1000)
   }
   const addTag = (type:'colours'|'sizes',value:string,setter:(s:string)=>void) => { if(value.trim() && !form[type].includes(value.trim())) patch(type,[...form[type],value.trim()]); setter('') }
-  return <><div className="admin-heading"><div><button className="back-link" onClick={() => go('/admin')}>← Products</button><h1>{existing ? 'Edit product' : 'Add a product'}</h1><p>Fill in the details below. You can save it as a draft first.</p></div></div>{error && <div className="form-error">{error}</div>}{success && <div className="form-success">{success}</div>}<div className="editor-grid"><div className="editor-form">
-    <section className="form-section"><span className="form-step">1</span><h2>Add photos</h2><p>Choose clear photos. The first one is the cover photo.</p><label className="upload-box"><input type="file" accept="image/*" multiple onChange={(e) => upload(e.target.files)} /><b>Tap to take or choose photos</b><span>JPG or PNG</span></label><div className="upload-preview">{form.images.map((img,i) => <div key={`${img.slice(0,20)}${i}`}><img src={img} alt="" /><span>{i===0?'Cover':`Photo ${i+1}`}</span><button onClick={() => patch('images',form.images.filter((_,x)=>x!==i))}>×</button>{i>0&&<button className="make-cover" onClick={() => patch('images',[img,...form.images.filter((_,x)=>x!==i)])}>Make cover</button>}</div>)}</div></section>
+  if (!loaded) return <div className="empty"><p>Loading…</p></div>
+  return <><div className="admin-heading"><div><button className="back-link" onClick={() => go('/admin')}>← Products</button><h1>{isNew ? 'Add a product' : 'Edit product'}</h1><p>Fill in the details below. You can save it as a draft first.</p></div></div>{error && <div className="form-error">{error}</div>}{success && <div className="form-success">{success}</div>}<div className="editor-grid"><div className="editor-form">
+    <section className="form-section"><span className="form-step">1</span><h2>Add photos</h2><p>Choose clear photos. The first one is the cover photo.</p><label className="upload-box"><input type="file" accept="image/*" multiple onChange={(e) => { const list = Array.from(e.target.files ?? []); e.target.value = ''; upload(list) }} /><b>{uploading > 0 ? `Uploading ${uploading} photo(s)…` : 'Tap to take or choose photos'}</b><span>JPG or PNG</span></label><div className="upload-preview">{form.images.map((img,i) => <div key={img}><img src={img} alt="" /><span>{i===0?'Cover':`Photo ${i+1}`}</span><button type="button" onClick={() => patch('images',form.images.filter((_,x)=>x!==i))}>×</button>{i>0&&<button type="button" className="make-cover" onClick={() => patch('images',[img,...form.images.filter((_,x)=>x!==i)])}>Make cover</button>}</div>)}</div></section>
     <section className="form-section"><span className="form-step">2</span><h2>Basic details</h2><label>Product name<input value={form.name} onChange={(e)=>patch('name',e.target.value)} placeholder="e.g. Classic Leather Bag" /></label><div className="form-row"><label>Price (Rand)<input type="number" min="0" value={form.price || ''} onChange={(e)=>patch('price',Number(e.target.value))} placeholder="0" /></label><label>Category<select value={form.category} onChange={(e)=>patch('category',e.target.value as Product['category'])}>{categories.slice(1).map((c)=><option key={c}>{c}</option>)}</select></label></div><label>Description<textarea rows={5} value={form.description} onChange={(e)=>patch('description',e.target.value)} placeholder="Describe the product in simple words" /></label></section>
-    <section className="form-section"><span className="form-step">3</span><h2>Options</h2><label>Colours<div className="tag-input"><input value={colour} onChange={(e)=>setColour(e.target.value)} placeholder="e.g. Tan" onKeyDown={(e)=>{if(e.key==='Enter'){e.preventDefault();addTag('colours',colour,setColour)}}}/><button onClick={()=>addTag('colours',colour,setColour)}>Add</button></div></label><div className="tags">{form.colours.map((c)=><button key={c} onClick={()=>patch('colours',form.colours.filter(x=>x!==c))}>{c} ×</button>)}</div><label>Sizes<div className="tag-input"><input value={size} onChange={(e)=>setSize(e.target.value)} placeholder="e.g. Medium" onKeyDown={(e)=>{if(e.key==='Enter'){e.preventDefault();addTag('sizes',size,setSize)}}}/><button onClick={()=>addTag('sizes',size,setSize)}>Add</button></div></label><div className="tags">{form.sizes.map((s)=><button key={s} onClick={()=>patch('sizes',form.sizes.filter(x=>x!==s))}>{s} ×</button>)}</div></section>
+    <section className="form-section"><span className="form-step">3</span><h2>Options</h2><label>Colours<div className="tag-input"><input value={colour} onChange={(e)=>setColour(e.target.value)} placeholder="e.g. Tan" onKeyDown={(e)=>{if(e.key==='Enter'){e.preventDefault();addTag('colours',colour,setColour)}}}/><button type="button" onClick={()=>addTag('colours',colour,setColour)}>Add</button></div></label><div className="tags">{form.colours.map((c)=><button type="button" key={c} onClick={()=>patch('colours',form.colours.filter(x=>x!==c))}>{c} ×</button>)}</div><label>Sizes<div className="tag-input"><input value={size} onChange={(e)=>setSize(e.target.value)} placeholder="e.g. Medium" onKeyDown={(e)=>{if(e.key==='Enter'){e.preventDefault();addTag('sizes',size,setSize)}}}/><button type="button" onClick={()=>addTag('sizes',size,setSize)}>Add</button></div></label><div className="tags">{form.sizes.map((s)=><button type="button" key={s} onClick={()=>patch('sizes',form.sizes.filter(x=>x!==s))}>{s} ×</button>)}</div></section>
     <section className="form-section"><span className="form-step">4</span><h2>Stock & display</h2><label>Stock status<select value={form.stock} onChange={(e)=>patch('stock',e.target.value as StockStatus)}>{statuses.map((s)=><option key={s}>{s}</option>)}</select></label><label className="checkbox"><input type="checkbox" checked={form.featured} onChange={(e)=>patch('featured',e.target.checked)} /> Show on home page as Featured</label></section>
-    <div className="editor-actions"><button className="btn secondary" onClick={()=>saveForm(false)}>Save as Draft</button><button className="btn" onClick={()=>saveForm(true)}>Publish</button></div>
-  </div><aside className="live-preview"><p className="eyebrow">LIVE PREVIEW</p><h2>How it will look</h2><ProductCard product={{...form,name:form.name||'Your product name',price:form.price||0,images:form.images.length?form.images:[seedProducts[0].images[0]]}} onOpen={()=>{}} /></aside></div></>
+    <div className="editor-actions"><button className="btn secondary" disabled={saving || uploading > 0} onClick={()=>saveForm(false)}>Save as Draft</button><button className="btn" disabled={saving || uploading > 0} onClick={()=>saveForm(true)}>{saving ? 'Saving…' : 'Publish'}</button></div>
+  </div><aside className="live-preview"><p className="eyebrow">LIVE PREVIEW</p><h2>How it will look</h2><ProductCard product={{...form,name:form.name||'Your product name',price:form.price||0,images:form.images.length?form.images:['/images/homepageimg.png']}} onOpen={()=>{}} /></aside></div></>
 }
 
 function SettingsPage({ settings, setSettings }: { settings: Settings; setSettings: (s: Settings) => void }) {
@@ -358,10 +404,12 @@ function SettingsPage({ settings, setSettings }: { settings: Settings; setSettin
 export default function App() {
   const { route,go } = useRoute()
   const [settings,setSettings] = useSettings()
+  const session = useSession()
   const isAdmin = route.page === 'admin'
   if (route.page === 'staff-login') return <StaffLogin go={go} />
   if (isAdmin) {
-    if (sessionStorage.getItem('charming-admin') !== 'true') { setTimeout(()=>go('/staff-login'),0); return null }
+    if (session === undefined) return <div className="empty"><p>Loading…</p></div>
+    if (!session) { setTimeout(()=>go('/staff-login'),0); return null }
     let content = <AdminDashboard go={go} />
     if (route.id === 'settings') content = <SettingsPage settings={settings} setSettings={setSettings} />
     if (route.id === 'product') content = <ProductEditor id={window.location.pathname.split('/')[3]} go={go} />

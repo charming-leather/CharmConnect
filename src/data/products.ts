@@ -1,10 +1,12 @@
+import { supabase } from '../lib/supabase'
+
 export type StockStatus = 'In Stock' | 'Low Stock' | 'Out of Stock' | 'Sold Out'
 
 export type Product = {
   id: string
   name: string
   price: number
-  category: 'Bags' | 'Wallets' | 'Belts' | 'Accessories'
+  category: 'Bags' | 'Wallets' | 'Jackets' | 'Accessories'
   description: string
   colours: string[]
   sizes: string[]
@@ -14,60 +16,92 @@ export type Product = {
   images: string[]
 }
 
-const images = {
-  bag: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=900&q=85',
-  tote: 'https://images.unsplash.com/photo-1594223274512-ad4803739b7c?auto=format&fit=crop&w=900&q=85',
-  wallet: 'https://images.unsplash.com/photo-1627123424574-724758594e93?auto=format&fit=crop&w=900&q=85',
-  belt: 'https://images.unsplash.com/photo-1624222247344-550fb60583dc?auto=format&fit=crop&w=900&q=85',
-  satchel: 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?auto=format&fit=crop&w=900&q=85',
-  purse: 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=900&q=85',
-  journal: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=900&q=85',
-  keyring: 'https://images.unsplash.com/photo-1622560480605-d83c853bc5c3?auto=format&fit=crop&w=900&q=85',
+const BUCKET = 'product-images'
+const notify = () => window.dispatchEvent(new Event('products-updated'))
+
+function fail(error: unknown) {
+  console.error(error)
+  alert('Something went wrong. Please check your internet connection and try again.')
+  return false
 }
 
-export const seedProducts: Product[] = [
-  { id: 'classic-satchel', name: 'Classic Leather Satchel', price: 1890, category: 'Bags', description: 'A timeless everyday satchel, handmade from full-grain leather with strong brass fittings.', colours: ['Tan', 'Chocolate', 'Black'], sizes: ['Standard'], stock: 'In Stock', featured: true, published: true, images: [images.satchel, images.bag] },
-  { id: 'parys-tote', name: 'Parys Everyday Tote', price: 1490, category: 'Bags', description: 'Roomy, comfortable and built for every day. Includes a secure inner pocket.', colours: ['Tan', 'Brown'], sizes: ['Medium', 'Large'], stock: 'Low Stock', featured: true, published: true, images: [images.tote, images.purse] },
-  { id: 'slim-wallet', name: 'Slim Card Wallet', price: 390, category: 'Wallets', description: 'A neat pocket wallet with room for cards and folded notes.', colours: ['Tan', 'Black', 'Brown'], sizes: ['One size'], stock: 'In Stock', featured: true, published: true, images: [images.wallet] },
-  { id: 'heritage-belt', name: 'Heritage Leather Belt', price: 620, category: 'Belts', description: 'A sturdy leather belt with a classic buckle, made to last.', colours: ['Tan', 'Dark brown', 'Black'], sizes: ['S', 'M', 'L', 'XL'], stock: 'In Stock', featured: true, published: true, images: [images.belt] },
-  { id: 'zip-wallet', name: 'Zip Around Wallet', price: 790, category: 'Wallets', description: 'A spacious zip wallet that keeps cards, notes and coins together.', colours: ['Tan', 'Red', 'Black'], sizes: ['One size'], stock: 'Low Stock', featured: false, published: true, images: [images.purse] },
-  { id: 'traveller-bag', name: 'Weekend Traveller', price: 2590, category: 'Bags', description: 'A generous weekend bag with comfortable handles and a removable shoulder strap.', colours: ['Tan', 'Chocolate'], sizes: ['Standard'], stock: 'Out of Stock', featured: false, published: true, images: [images.bag] },
-  { id: 'journal-cover', name: 'Leather Journal Cover', price: 540, category: 'Accessories', description: 'A refillable leather cover for your notes, lists and memories.', colours: ['Tan', 'Brown'], sizes: ['A5'], stock: 'In Stock', featured: false, published: true, images: [images.journal] },
-  { id: 'key-holder', name: 'Loop Key Holder', price: 180, category: 'Accessories', description: 'A simple, strong leather key loop with a brass ring.', colours: ['Tan', 'Brown', 'Black'], sizes: ['One size'], stock: 'In Stock', featured: false, published: true, images: [images.keyring] },
-  { id: 'mini-crossbody', name: 'Mini Crossbody Bag', price: 1190, category: 'Bags', description: 'A compact hands-free bag for your phone, wallet and daily essentials.', colours: ['Tan', 'Black'], sizes: ['Standard'], stock: 'Sold Out', featured: false, published: true, images: [images.purse] },
-]
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const rowToProduct = (r: any): Product => ({
+  id: r.id,
+  name: r.name,
+  price: Number(r.price),
+  category: r.category,
+  description: r.description ?? '',
+  colours: r.colours ?? [],
+  sizes: r.sizes ?? [],
+  stock: r.stock,
+  featured: !!r.featured,
+  published: !!r.published,
+  images: r.images ?? [],
+})
 
-const KEY = 'charming-leather-products-v1'
-
-export function getProducts(includeDrafts = false): Product[] {
-  const saved = localStorage.getItem(KEY)
-  const products = saved ? (JSON.parse(saved) as Product[]) : seedProducts
-  return includeDrafts ? products : products.filter((product) => product.published)
+export async function getProducts(includeDrafts = false): Promise<Product[]> {
+  let query = supabase.from('products').select('*').order('created_at', { ascending: false })
+  if (!includeDrafts) query = query.eq('published', true)
+  const { data, error } = await query
+  if (error) { console.error(error); return [] }
+  return (data ?? []).map(rowToProduct)
 }
 
-function save(products: Product[]) {
-  localStorage.setItem(KEY, JSON.stringify(products))
-  window.dispatchEvent(new Event('products-updated'))
+export async function getProduct(id: string): Promise<Product | undefined> {
+  const { data, error } = await supabase.from('products').select('*').eq('id', id).maybeSingle()
+  if (error) { console.error(error); return undefined }
+  return data ? rowToProduct(data) : undefined
 }
 
-export function getProduct(id: string) {
-  return getProducts(true).find((product) => product.id === id)
+export async function addProduct(product: Product): Promise<boolean> {
+  const { error } = await supabase.from('products').insert(product)
+  if (error) return fail(error)
+  notify()
+  return true
 }
 
-export function addProduct(product: Product) {
-  save([product, ...getProducts(true)])
+export async function updateProduct(id: string, changes: Partial<Product>): Promise<boolean> {
+  const { error } = await supabase.from('products').update(changes).eq('id', id)
+  if (error) return fail(error)
+  notify()
+  return true
 }
 
-export function updateProduct(id: string, updates: Partial<Product>) {
-  save(getProducts(true).map((product) => (product.id === id ? { ...product, ...updates } : product)))
+export async function deleteProduct(id: string): Promise<boolean> {
+  const { error } = await supabase.from('products').delete().eq('id', id)
+  if (error) return fail(error)
+  notify()
+  return true
 }
 
-export function deleteProduct(id: string) {
-  save(getProducts(true).filter((product) => product.id !== id))
+export async function duplicateProduct(id: string): Promise<boolean> {
+  const p = await getProduct(id)
+  if (!p) return false
+  return addProduct({ ...p, id: `${p.id}-copy-${Date.now()}`, name: `${p.name} (copy)`, published: false })
 }
 
-export function duplicateProduct(id: string) {
-  const source = getProduct(id)
-  if (!source) return
-  addProduct({ ...source, id: `${source.id}-copy-${Date.now()}`, name: `${source.name} (Copy)`, published: false })
+// Shrinks big phone photos to about 1400px so the site stays fast
+async function compress(file: File, maxSize = 1400, quality = 0.82): Promise<Blob> {
+  const bitmap = await createImageBitmap(file)
+  const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not process photo'))), 'image/jpeg', quality),
+  )
+}
+
+// Uploads one photo and returns its public web address
+export async function uploadImage(file: File): Promise<string> {
+  const blob = await compress(file)
+  const path = `${crypto.randomUUID()}.jpg`
+  const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
+    contentType: 'image/jpeg',
+    cacheControl: '31536000',
+  })
+  if (error) throw error
+  return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
 }
